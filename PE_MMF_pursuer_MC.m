@@ -1,27 +1,28 @@
 clear;clc;clf;
 %multiple model strategy determination, from the evader's perspective, of the pursuer
 
-MCL=50;
-muAll=zeros(30,2,MCL);
+MCL=100;
+nmod_tot=3;
+muAll=zeros(30,nmod_tot,MCL);
 
 for tMC=1:MCL
     
     nX=4;
     nU=2;
     nZ=2;
-    dt=.5;
-    cd=.1; %drag coefficient, =0 to ignore
+    dt=0.5;
+    cd=0; %drag coefficient, =0 to ignore
     A_tr=[eye(nX/2) (1*dt-cd*dt^2/2)*eye(nX/2); zeros(nX/2,nX/2) (1-cd*dt)*eye(nX/2)];
     B_tr=[dt^2/2*eye(nX/2); dt*eye(nX/2)];
     Gammak=[dt^2/2*eye(nX/2); dt*eye(nX/2)];
     H=[eye(nX/2) zeros(nX/2)];
     P0=diag([.05*ones(1,nX/2) .1*ones(1,nX/2)]);
-    Q0=.1*eye(nX/2);
-    R0=.05*eye(nZ);
+    Q0=.001*eye(nX/2);
+    R0=.005*eye(nZ);
     
-    nmod_pur=2; %number of models considered
-    q1_pur=2.5;
-    q2_pur=[0 .5 1];
+    nmod_pur=nmod_tot; %number of models considered
+    q1_pur=5;
+    q2_pur=[0  15 10000];
     r1_pur=1.5;
     ntrue_pur=2; %index of true model
     Mij = .25*ones(nmod_pur,nmod_pur); %probability of mode switching
@@ -38,8 +39,8 @@ for tMC=1:MCL
     mu_min=10^-2;
     normpdf_diag_DEBUG=.01; %with high confidence, diagonal elements of normpdf matrix go to zero
     
-    xEva=[15;10;0;0];
-    xPur=[0;0;.1;0];
+    xEva=[20;10;0;0];
+    xPur=[0;0;0;0];
     umaxPur=2.25;
     umaxEva=2;
     
@@ -261,18 +262,18 @@ for tMC=1:MCL
 
 end
 
-muMean=zeros(2,31);
-for k=1:MCL
-    muMean=muMean+(muAll(:,:,k))'/MCL;
-end
+muMean=(mean(muAll,3))';
 
 figure(1);clf;
 colors='brgybrgybrgy';
 for j=1:nmod_pur
-    plot(tkhist(1:numSimRuns),muMean(j,1:numSimRuns),colors(j))
+    plot(1:1:numSimRuns,muMean(j,1:numSimRuns),colors(j))
     hold on
 end
-axis([0 tkhist(end) 0 1.1])
-legend('Collision','Rendezvous')
-
+axis([1 numSimRuns 0 1.1])
+if nmod_pur==2
+    legend('Collision','Rendezvous')
+else
+    legend('u1','u2','u3','u4')
+end
 

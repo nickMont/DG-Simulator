@@ -1,7 +1,6 @@
 %Contains constant matrices for Kumar1980 solution
-global nX_GG nU_GG
+global nX_GG
 nX=nX_GG;
-nU=nU_GG;
 
 eyeHalf=eye(nX/2);
 zeroHalf=zeros(nX/2,nX/2);

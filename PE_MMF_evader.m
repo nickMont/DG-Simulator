@@ -1,6 +1,8 @@
-clear;clc;clf;
+clear;clc;
 %multiple model strategy determination, from the pursuer, of the evader
 %NOTE: Model 2 is a min-distance one-step evasion strategy
+
+%NEED TO UPDATE FROM NORMPDF TO MVNPDF
 
 nX=4;
 nU=2;
@@ -25,6 +27,7 @@ ntrue_pur=2; %index of true model
 MijE = .25*ones(nmod_pur,nmod_pur); %probability of mode switching
 
 nmod_eva=2; %number of models considered
+ntrueEvaIndex=ones(nSim,1);
 q1_eva=2.5;
 q2_eva=0;
 r1_eva=[.1 3.0];
@@ -38,7 +41,6 @@ flagUseXPrevInsteadOfXModel=0;  %use overall xhat estimate instead of model-
     %Best performance at flag==0.
 flagSwapAtTenEva=0;
 flagSwapAtTwentyEva=0;  %swap time index
-
 
 nSim=20;
 mu_min=10^-4;
@@ -107,20 +109,7 @@ for i=1:nSim
     xhatE=xhat;
     xhatP=xhat;
     
-    if i==10 && flagSwapAtTenEva==1
-        if ntrue_eva==1
-            ntrue_eva=2;
-        else
-            ntrue_eva=1;
-        end
-    end
-    if i==20 && flagSwapAtTwentyEva==1
-        if ntrue_eva==1
-            ntrue_eva=2;
-        else
-            ntrue_eva=1;
-        end
-    end
+    ntrue_eva=ntrueEvaIndex(i);
     
     %Pursuer control
     umax_GG=umaxPur;        %#ok<NASGU>
@@ -238,14 +227,14 @@ for i=1:nSim
 
 end
 
-figure(1);clf;
-colors='brgybrgybrgy';
-for j=1:nmod_eva
-    plot(tkhist(1:numSimRuns),mukhist_eva(j,1:numSimRuns),colors(j))
-    hold on
-end
-axis([0 tkhist(end) 0 1.1])
-legend('r1','r2')
+% figure(1);clf;
+% colors='brgybrgybrgy';
+% for j=1:nmod_eva
+%     plot(tkhist(1:numSimRuns),mukhist_eva(j,1:numSimRuns),colors(j))
+%     hold on
+% end
+% axis([0 tkhist(end) 0 1.1])
+% legend('r1','r2')
 
 
 

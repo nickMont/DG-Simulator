@@ -1,5 +1,5 @@
 clear;clc;
-%closes the loop for control switching by risk-dominance criterion
+%Closes the loop on the switching game
 
 %NOTES
 % approximate filtering
@@ -24,7 +24,7 @@ flagPlotAsGo=0;  %=1 to plot motion
 flagPlotFinal=0; %=1 to plot final dist/speed history
 plotint=.1;
 
-nX=2;   %full size of state space (even number)
+nX=4;   %full size of state space (even number)
 nU=nX/2;
 nV=nX/2;
 nZ=nX/2;
@@ -257,105 +257,111 @@ for MCL=1:MCmax
         end
         
         %generate greedy open-loop controls
-        if flagUseFeedback ~= 1
-            if lookAheadTime==0
-                ttf=ceil(tmax/dt + 1 - i);
-            elseif flagDiminishHorizonNearNSim
-                tRemain=nSim-i+1;
-                if tRemain>=lookAheadTime
+        for indentOpenLoop=1:1
+            if flagUseFeedback ~= 1
+                if lookAheadTime==0
+                    ttf=ceil(tmax/dt + 1 - i);
+                elseif flagDiminishHorizonNearNSim
+                    tRemain=nSim-i+1;
+                    if tRemain>=lookAheadTime
+                        ttf=lookAheadTime;
+                    else
+                        ttf=tRemain;
+                    end
+                else
                     ttf=lookAheadTime;
-                else
-                    ttf=tRemain;
                 end
-            else
-                ttf=lookAheadTime;
-            end
-            u1p = [.1 .2 .3];
-            u2p = u1p;
-            u3p = u1p;
-            u1L=length(u1p);
-            n0=length(u1p)^ttf;
-            if max(u1p)>umaxPur
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            elseif max(u2p)>umaxPur
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            end
-            uconP=zeros(nU,1,ttf,n0);
-            if nX==2
-                if ttf==1
-                    uconP(1,1,1,:)=u1p;
-                elseif ttf >= 2
-                    possibleCombPrev=combvec(u1p,u1p);
-                    if ttf >= 3
-                        for i1=3:ttf
-                            possibleCombPrev=combvec(possibleCombPrev,u1p);
+                u1p = [.1 .2 .3];
+                u2p = u1p;
+                u3p = u1p;
+                u1L=length(u1p);
+                n0=length(u1p)^ttf;
+                if max(u1p)>umaxPur
+                    error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
+                elseif max(u2p)>umaxPur
+                    error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
+                end
+                uconP=zeros(nU,1,ttf,n0);
+                if nX==2
+                    if ttf==1
+                        uconP(1,1,1,:)=u1p;
+                    elseif ttf >= 2
+                        possibleCombPrev=combvec(u1p,u1p);
+                        if ttf >= 3
+                            for i1=3:ttf
+                                possibleCombPrev=combvec(possibleCombPrev,u1p);
+                            end
                         end
+                        uconP(1,1,:,:)=possibleCombPrev;
                     end
-                    uconP(1,1,:,:)=possibleCombPrev;
-                end
-            elseif nX>=4
-                if nX==4
-                    uconP=zeros(u1L,1,ttf,n0^2);
-                    comb1vec=combvec(u1p,u2p);
-                else
-                    comb1vec=combvec(combvec(u1p,u2p),u3p);
-                end
-                if ttf==1
-                    uconP(:,:,1,:)=comb1vec;
-                elseif ttf>=2
-                    possibleCombPrev=comb1vec;
-                    for i1=2:ttf
-                        possibleCombPrev=combvec(comb1vec,possibleCombPrev);
+                elseif nX>=4
+                    if nX==4
+                        uconP=zeros(nU,1,ttf,n0^2);
+                        comb1vec=combvec(u1p,u2p);
+                    else
+                        comb1vec=combvec(combvec(u1p,u2p),u3p);
                     end
-                    for i1=1:length(possibleCombPrev)
-                        for i2=0:floor(length(possibleCombPrev(:,i1))/nU)-1
-                            nblock=i2*nU+1:(i2+1)*nU;
-                            uconP(:,1,i2+1,i1)=possibleCombPrev(nblock,i1);
+                    if ttf==1
+                        uconP(:,:,1,:)=comb1vec;
+                    elseif ttf>=2
+                        possibleCombPrev=comb1vec;
+                        for i1=2:ttf
+                            possibleCombPrev=combvec(comb1vec,possibleCombPrev);
+                        end
+                        for i1=1:length(possibleCombPrev)
+                            for i2=0:floor(length(possibleCombPrev(:,i1))/nU)-1
+                                nblock=i2*nU+1:(i2+1)*nU;
+                                uconP(:,1,i2+1,i1)=possibleCombPrev(nblock,i1);
+                            end
                         end
                     end
                 end
-            end
-            
-            u1e = u1p;
-            u2e = u1e;
-            
-            n0=length(u1e)^ttf;
-            if max(u1e)>umaxEva
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            elseif max(u2e)>umaxEva
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            end
-            uconE=zeros(nU,1,ttf,n0);
-            if nX==2
-                if ttf==1
-                    uconE(1,1,1,:)=u1e;
-                elseif ttf >= 2
-                    possibleCombPrev=combvec(u1e,u1e);
-                    if ttf >= 3
-                        for i1=3:ttf
-                            possibleCombPrev=combvec(possibleCombPrev,u1e);
-                        end
-                    end
-                    uconE(1,1,:,:)=possibleCombPrev;
-                end
-            elseif nX>=4
-                if nX==4
-                    uconP=zeros(u1L,1,ttf,n0^2);
-                    comb1vec=combvec(u1p,u2p);
+                
+                u1e = u1p;
+                u2e = u1e;
+                
+                if isequal(u1e,u1p) && isequal(u2e,u2p)
+                    uconE=uconP;
                 else
-                    comb1vec=combvec(combvec(u1p,u2p),u3p);
-                end
-                if ttf==1
-                    uconP(:,:,1,:)=comb1vec;
-                elseif ttf>=2
-                    possibleCombPrev=comb1vec;
-                    for i1=2:ttf
-                        possibleCombPrev=combvec(comb1vec,possibleCombPrev);
+                    n0=length(u1e)^ttf;
+                    if max(u1e)>umaxEva
+                        error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
+                    elseif max(u2e)>umaxEva
+                        error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
                     end
-                    for i1=1:length(possibleCombPrev)
-                        for i2=0:floor(length(possibleCombPrev(:,i1))/nU)-1
-                            nblock=i2*nU+1:(i2+1)*nU;
-                            uconP(:,1,i2+1,i1)=possibleCombPrev(nblock,i1);
+                    uconE=zeros(nU,1,ttf,n0);
+                    if nX==2
+                        if ttf==1
+                            uconE(1,1,1,:)=u1e;
+                        elseif ttf >= 2
+                            possibleCombPrev=combvec(u1e,u1e);
+                            if ttf >= 3
+                                for i1=3:ttf
+                                    possibleCombPrev=combvec(possibleCombPrev,u1e);
+                                end
+                            end
+                            uconE(1,1,:,:)=possibleCombPrev;
+                        end
+                    elseif nX>=4
+                        if nX==4
+                            uconE=zeros(nU,1,ttf,n0^2);
+                            comb1vec=combvec(u1p,u2p);
+                        else
+                            comb1vec=combvec(combvec(u1p,u2p),u3p);
+                        end
+                        if ttf==1
+                            uconE(:,:,1,:)=comb1vec;
+                        elseif ttf>=2
+                            possibleCombPrev=comb1vec;
+                            for i1=2:ttf
+                                possibleCombPrev=combvec(comb1vec,possibleCombPrev);
+                            end
+                            for i1=1:length(possibleCombPrev)
+                                for i2=0:floor(length(possibleCombPrev(:,i1))/nU)-1
+                                    nblock=i2*nU+1:(i2+1)*nU;
+                                    uconE(:,1,i2+1,i1)=possibleCombPrev(nblock,i1);
+                                end
+                            end
                         end
                     end
                 end
@@ -397,93 +403,100 @@ for MCL=1:MCmax
         VeEva=C-JeEva;
         [eqLocP,nashReturnFlagP,~]=findRDEq(VpPur,VePur);
         [eqLocE,nashReturnFlagE,~]=findRDEq(VpEva,VeEva);
-        if nashReturnFlagP>=1 %if there IS an RDEq
-            uClassPp=eqLocP(1,1);
-            uClassEp=eqLocP(2,1);
-            if typesP(uClassPp)==1
-                uPurTrue = vectorSaturationF(uconP(:,:,1,uClassPp),0,umaxPur);
-            else
-                uPurTrue = vectorSaturationF(KmatP(:,:,1,uClassPp)*xhatP,0,umaxPur);
-            end
-            if typesE(uClassEp)==1
-                uEvaExpected = vectorSaturationF(uconE(:,:,1,uClassEp),0,umaxEva);
-            else
-                uEvaExpected = vectorSaturationF(KmatE(:,:,1,uClassEp)*xhatE,0,umaxEva);
-            end
-        elseif nashReturnFlagP==0 %suboptimal
-            fprintf('Running LH2')
-            nashMixedP=LH2(VpPur,VePur);
-            KpM=zeros(size(KmatP(:,:,1,1)));
-            KeM=zeros(size(KmatE(:,:,1,1)));
-            nashP=nashMixedP{1};
-            nashE=nashMixedP{2};
-            u0p=zeros(nU,1);
-            u0e=zeros(nU,1);
-            for kk=1:length(nashP)
-                if nashP(kk) > 0
-                    if typesP(kk)==0
-                        u0p=u0p+nashP(kk)*KmatP(:,:,1,kk)*xhatP;
-                    else
-                        u0p=u0p+nashP(kk)*uconP(:,:,1,kk);
+        
+        %Generate optimal pursuer control from NE
+        for indentProcessNE_P=1:1
+            if nashReturnFlagP>=1 %if there IS an RDEq
+                uClassPp=eqLocP(1,1);
+                uClassEp=eqLocP(2,1);
+                if typesP(uClassPp)==1
+                    uPurTrue = vectorSaturationF(uconP(:,:,1,uClassPp),0,umaxPur);
+                else
+                    uPurTrue = vectorSaturationF(KmatP(:,:,1,uClassPp)*xhatP,0,umaxPur);
+                end
+                if typesE(uClassEp)==1
+                    uEvaExpected = vectorSaturationF(uconE(:,:,1,uClassEp),0,umaxEva);
+                else
+                    uEvaExpected = vectorSaturationF(KmatE(:,:,1,uClassEp)*xhatE,0,umaxEva);
+                end
+            elseif nashReturnFlagP==0 %suboptimal
+                fprintf('Running LH2')
+                nashMixedP=LH2(VpPur,VePur);
+                KpM=zeros(size(KmatP(:,:,1,1)));
+                KeM=zeros(size(KmatE(:,:,1,1)));
+                nashP=nashMixedP{1};
+                nashE=nashMixedP{2};
+                u0p=zeros(nU,1);
+                u0e=zeros(nU,1);
+                for kk=1:length(nashP)
+                    if nashP(kk) > 0
+                        if typesP(kk)==0
+                            u0p=u0p+nashP(kk)*KmatP(:,:,1,kk)*xhatP;
+                        else
+                            u0p=u0p+nashP(kk)*uconP(:,:,1,kk);
+                        end
                     end
                 end
-            end
-            for kk=1:length(nashE)
-                if nashE(kk) > 0
-                    if typesE(kk)==0
-                        u0e=u0e+nashE(kk)*KmatE(:,:,1,kk)*xhatP;
-                    else
-                        u0e=u0e+nashE(kk)*uconE(:,:,1,kk);
+                for kk=1:length(nashE)
+                    if nashE(kk) > 0
+                        if typesE(kk)==0
+                            u0e=u0e+nashE(kk)*KmatE(:,:,1,kk)*xhatP;
+                        else
+                            u0e=u0e+nashE(kk)*uconE(:,:,1,kk);
+                        end
                     end
                 end
+                uPurTrue=vectorSaturationF(u0p,0,umaxPur);
+                uEvaExpected=vectorSaturationF(u0e,0,umaxEva);
             end
-            uPurTrue=vectorSaturationF(u0p,0,umaxPur);
-            uEvaExpected=vectorSaturationF(u0e,0,umaxEva);
         end
         
-        if nashReturnFlagE>=1
-            uClassPe=eqLocE(1,1);
-            uClassEe=eqLocE(2,1);
-            if typesP(uClassPe)==1
-                uPurExpected = vectorSaturationF(uconP(:,:,1,uClassPe),0,umaxPur);
-            else
-                uPurExpected = vectorSaturationF(KmatP(:,:,1,uClassPe)*xhatE,0,umaxPur);
-            end
-            if typesE(uClassEe)==1
-                uEvaTrue = vectorSaturationF(uconE(:,:,1,uClassEe),0,umaxEva);
-            else
-                uEvaTrue = vectorSaturationF(KmatE(:,:,1,uClassEe)*xhatE,0,umaxEva);
-            end
-        elseif nashReturnFlagE==0 %suboptimal
-            fprintf('Running LH2')
-            nashMixedE=LH2(VpEva,VeEva);
-            KpM=zeros(size(KmatP(:,:,1,1)));
-            KeM=zeros(size(KmatE(:,:,1,1)));
-            nashP=nashMixedE{1};
-            nashE=nashMixedE{2};
-            u0p=zeros(nU,1);
-            u0e=zeros(nU,1);
-            for kk=1:length(nashP)
-                if nashP(kk) > 0
-                    if typesP(kk)==0
-                        u0p=u0p+nashP(kk)*KmatP(:,:,1,kk)*xhatE;
-                    else
-                        u0p=u0p+nashP(kk)*uconP(:,:,1,kk);
+        %Genderate optimal evader control from NE
+        for indendProcessNE_E=1:1
+            if nashReturnFlagE>=1
+                uClassPe=eqLocE(1,1);
+                uClassEe=eqLocE(2,1);
+                if typesP(uClassPe)==1
+                    uPurExpected = vectorSaturationF(uconP(:,:,1,uClassPe),0,umaxPur);
+                else
+                    uPurExpected = vectorSaturationF(KmatP(:,:,1,uClassPe)*xhatE,0,umaxPur);
+                end
+                if typesE(uClassEe)==1
+                    uEvaTrue = vectorSaturationF(uconE(:,:,1,uClassEe),0,umaxEva);
+                else
+                    uEvaTrue = vectorSaturationF(KmatE(:,:,1,uClassEe)*xhatE,0,umaxEva);
+                end
+            elseif nashReturnFlagE==0 %suboptimal
+                fprintf('Running LH2')
+                nashMixedE=LH2(VpEva,VeEva);
+                KpM=zeros(size(KmatP(:,:,1,1)));
+                KeM=zeros(size(KmatE(:,:,1,1)));
+                nashP=nashMixedE{1};
+                nashE=nashMixedE{2};
+                u0p=zeros(nU,1);
+                u0e=zeros(nU,1);
+                for kk=1:length(nashP)
+                    if nashP(kk) > 0
+                        if typesP(kk)==0
+                            u0p=u0p+nashP(kk)*KmatP(:,:,1,kk)*xhatE;
+                        else
+                            u0p=u0p+nashP(kk)*uconP(:,:,1,kk);
+                        end
                     end
                 end
-            end
-            for kk=1:length(nashE)
-                if nashE(kk) > 0
-                    if typesE(kk)==0
-                        u0e=u0e+nashE(kk)*KmatE(:,:,1,kk)*xhatE;
-                    else
-                        u0e=u0e+nashE(kk)*uconE(:,:,1,kk);
+                for kk=1:length(nashE)
+                    if nashE(kk) > 0
+                        if typesE(kk)==0
+                            u0e=u0e+nashE(kk)*KmatE(:,:,1,kk)*xhatE;
+                        else
+                            u0e=u0e+nashE(kk)*uconE(:,:,1,kk);
+                        end
                     end
                 end
+                uPurExpected=vectorSaturationF(u0p,0,umaxPur);
+                uEvaTrue=vectorSaturationF(u0e,0,umaxEva);
+                
             end
-            uPurExpected=vectorSaturationF(u0p,0,umaxPur);
-            uEvaTrue=vectorSaturationF(u0e,0,umaxEva);
-
         end
         
         uphist=[uphist uPurTrue];
