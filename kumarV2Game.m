@@ -19,7 +19,6 @@ if flagRunV3==1
         end
     end
     
-    
     % up=vectorSaturationF(-inv(R11)*G1'*(Q1*x1hat+Q3*(x1hat-x2hat)),0,umaxPur)
     up=vectorSaturationF(-inv(R11)*G1'*Q2p*x1hat,0,umaxPur)
     ue=vectorSaturationF(-inv(R22)*G2'*Q2*x2hat,0,umaxEva)

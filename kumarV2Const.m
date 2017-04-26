@@ -2,10 +2,10 @@
 global nX_GG
 nX=nX_GG;
 
-qPurF=10;
-rPur=5;
-qEvaF=10;
-rEva=20;
+qPurF=8;
+rPur=110;
+qEvaF=5;
+rEva=125;
 
 eyeHalf=eye(nX/2);
 zeroHalf=zeros(nX/2,nX/2);

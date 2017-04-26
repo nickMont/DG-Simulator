@@ -5,15 +5,15 @@ clear;clc;
 % approximate filtering
 
 tmax=10;
-lookAheadTime=3; %number of steps to look ahead in optimization; set 0 to use t_remaining instead
+lookAheadTime=1; %number of steps to look ahead in optimization; set 0 to use t_remaining instead
 dt=1;
 MCmax=1;
 nSim=ceil(tmax/dt); %simulation time within MC
-%nSim=1;
+nSim=1;
 
 flagDiminishHorizonNearNSim=1;  %if ==1, consider lookAheadTime
          %if TRemain>lookAheadTime, use TRemain if TRemain<lookAheadTime
-flagUseDetm=0;  %zero noise if flag==1
+flagUseDetm=1;  %zero noise if flag==1
 flagUseFeedback=0; %generate control history via feedback
 
 muAllP=zeros(MCmax,nSim,2);
@@ -56,7 +56,7 @@ for MCL=1:MCmax
     %cost matrices
     QfPur=8*[eyeHalfNX zerosHalfNX; zerosHalfNX zerosHalfNX];
     QstepPur=zeros(nX,nX);
-    RPur=110*eye(nU);  %NOTE: discrete R = continuous R*dt^2
+    RPur=110*eye(nU);  %NOTE: discrete R = continuous R*dt^2 %it IS dt^2, NOT dt^2/2
     RPurScaled=RPur*dt^2;
     
     QfEva=5*[eyeHalfNX zerosHalfNX; zerosHalfNX zerosHalfNX];
@@ -104,12 +104,11 @@ for MCL=1:MCmax
     n_seed = round(sum(clock*100));
     randn('state', n_seed);
     
-    xhat0=xEva-xPur+(chol(P0))'*randn(nX,1);
-    xhat0=xEva-xPur;
+    ehat0=xEva-xPur+(chol(P0))'*randn(nX,1);
     if flagUseDetm==1
-        xhat0=xEva-xPur; %deterministic behavior
+        ehat0=xEva-xPur; %deterministic behavior
     end
-    xhat_prev_pur=xhat0;
+    ehat_prev_pur=ehat0;
     
     Pstore_pur=zeros(nX,nX,nmod_pur,nSim);
     Pstore_pur(:,:,1,1)=P0;
@@ -121,18 +120,18 @@ for MCL=1:MCmax
     LambdaVec_pur=zeros(nmod_pur,nSim);
     mukhist_pur=[mukhist_pur mu0];
     muPrev_pur=mu0;
-    xhathist_weighted_pur=xhat0;
+    xhathist_weighted_pur=ehat0;
     
     
     %set randn's seed RNG
     n_seed = round(sum(clock*100));
     randn('state', n_seed);
     
-    xhat0=xEva-xPur+(chol(P0))'*randn(nX,1);
+    ehat0=xEva-xPur+(chol(P0))'*randn(nX,1);
     if flagUseDetm==1
-        xhat0=xEva-xPur; %deterministic behavior
+        ehat0=xEva-xPur; %deterministic behavior
     end
-    xhat_prev_eva=xhat0;
+    xhat_prev_eva=ehat0;
     
     Pstore_eva=zeros(nX,nX,nmod_eva,nSim);
     Pstore_eva(:,:,1,1)=P0;
@@ -144,7 +143,7 @@ for MCL=1:MCmax
     LambdaVec_eva=zeros(nmod_eva,nSim);
     mukhist_eva=[mukhist_eva mu0];
     muPrev_eva=mu0;
-    xhathist_weighted_eva=xhat0;
+    xhathist_weighted_eva=ehat0;
     
     %----- Simulation parameters
     tkhist = [0:nSim]'*dt;
@@ -176,16 +175,16 @@ for MCL=1:MCmax
         i %#ok<NOPTS>
         
         if i==1
-            xhatP=xhat0;
+            xhatP=ehat0;
             for j=1:nmod_pur
-                xhathist_pur(:,j,1)=xhat0;
+                xhathist_pur(:,j,1)=ehat0;
             end
-            xhatE=xhat0;
+            xhatE=ehat0;
             for j=1:nmod_eva
-                xhathist_eva(:,j,1)=xhat0;
+                xhathist_eva(:,j,1)=ehat0;
             end
         else
-            xhatP=xhat_prev_pur;
+            xhatP=ehat_prev_pur;
             xhatE=xhat_prev_eva;
         end
         
@@ -260,7 +259,7 @@ for MCL=1:MCmax
         if flagUseFeedback ~= 1
             if lookAheadTime==0
                 ttf=ceil(tmax/dt + 1 - i);
-            elseif flagDiminishHorizonNearNSim
+            elseif flagDiminishHorizonNearNSim==1
                 tRemain=nSim-i+1;
                 if tRemain>=lookAheadTime
                     ttf=lookAheadTime;
@@ -270,96 +269,15 @@ for MCL=1:MCmax
             else
                 ttf=lookAheadTime;
             end
-            u1p = [.1 .2 .3];
-            u2p = u1p;
-            u3p = u1p;
-            u1L=length(u1p);
-            n0=length(u1p)^ttf;
-            if max(u1p)>umaxPur
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            elseif max(u2p)>umaxPur
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            end
-            uconP=zeros(nU,1,ttf,n0);
-            if nX==2
-                if ttf==1
-                    uconP(1,1,1,:)=u1p;
-                elseif ttf >= 2
-                    possibleCombPrev=combvec(u1p,u1p);
-                    if ttf >= 3
-                        for i1=3:ttf
-                            possibleCombPrev=combvec(possibleCombPrev,u1p);
-                        end
-                    end
-                    uconP(1,1,:,:)=possibleCombPrev;
-                end
-            elseif nX>=4
-                if nX==4
-                    uconP=zeros(u1L,1,ttf,n0^2);
-                    comb1vec=combvec(u1p,u2p);
-                else
-                    comb1vec=combvec(combvec(u1p,u2p),u3p);
-                end
-                if ttf==1
-                    uconP(:,:,1,:)=comb1vec;
-                elseif ttf>=2
-                    possibleCombPrev=comb1vec;
-                    for i1=2:ttf
-                        possibleCombPrev=combvec(comb1vec,possibleCombPrev);
-                    end
-                    for i1=1:length(possibleCombPrev)
-                        for i2=0:floor(length(possibleCombPrev(:,i1))/nU)-1
-                            nblock=i2*nU+1:(i2+1)*nU;
-                            uconP(:,1,i2+1,i1)=possibleCombPrev(nblock,i1);
-                        end
-                    end
-                end
-            end
             
-            u1e = u1p;
-            u2e = u1e;
+            k1 = 1.0e-04 *[-0.4066   -0.0004]*ehat_prev_pur;
+            k2 = 1.0e-04 *[-0.3578   -0.0003]*ehat_prev_pur;
             
-            n0=length(u1e)^ttf;
-            if max(u1e)>umaxEva
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            elseif max(u2e)>umaxEva
-                error('Maximum constant thrust exceeded, see generation code for constant thrust inputs')
-            end
-            uconE=zeros(nU,1,ttf,n0);
-            if nX==2
-                if ttf==1
-                    uconE(1,1,1,:)=u1e;
-                elseif ttf >= 2
-                    possibleCombPrev=combvec(u1e,u1e);
-                    if ttf >= 3
-                        for i1=3:ttf
-                            possibleCombPrev=combvec(possibleCombPrev,u1e);
-                        end
-                    end
-                    uconE(1,1,:,:)=possibleCombPrev;
-                end
-            elseif nX>=4
-                if nX==4
-                    uconP=zeros(u1L,1,ttf,n0^2);
-                    comb1vec=combvec(u1p,u2p);
-                else
-                    comb1vec=combvec(combvec(u1p,u2p),u3p);
-                end
-                if ttf==1
-                    uconP(:,:,1,:)=comb1vec;
-                elseif ttf>=2
-                    possibleCombPrev=comb1vec;
-                    for i1=2:ttf
-                        possibleCombPrev=combvec(comb1vec,possibleCombPrev);
-                    end
-                    for i1=1:length(possibleCombPrev)
-                        for i2=0:floor(length(possibleCombPrev(:,i1))/nU)-1
-                            nblock=i2*nU+1:(i2+1)*nU;
-                            uconP(:,1,i2+1,i1)=possibleCombPrev(nblock,i1);
-                        end
-                    end
-                end
-            end
+            u1p=[(k1-.0005):.0001:(k1+.005) (k2-.0005):.0001:(k2+.005) .01:.001:.2]; %.177
+            u1e=u1p; %.097
+            
+            uconP=uConMat(ttf,umaxPur,u1p);
+            uconE=uConMat(ttf,umaxEva,u1e);
         end
         
         nmod_pur=length(uconP);
@@ -510,7 +428,7 @@ for MCL=1:MCmax
         JevaRunning=JevaRunning+uEvaTrue'*REvaScaled*uEvaTrue;
         
         xhat_prev_eva=eTrue+0.5*chol(P0)*randn(nX,1);
-        xhat_prev_pur=eTrue+0.5*chol(P0)*randn(nX,1);
+        ehat_prev_pur=eTrue+0.5*chol(P0)*randn(nX,1);
         
         %Various outputs
 %        kHist=KmatE(:,:,:,uClassEe)
@@ -520,9 +438,9 @@ for MCL=1:MCmax
         uE=uEvaTrue
 %        xPurLoc=xPur
 %        xEvaLoc=xEva
-        e=eTrue
-        vp=VpPur
-        ve=VePur
+        e=eTrue;
+        vp=VpPur;
+        ve=VePur;
         
         
         if flagPlotAsGo==1
