@@ -1,4 +1,4 @@
-function varargout = generateCostMatrices_DS(strategiesP,strategiesE,Jfall,xP0,xE0,numMC, answerFlag)
+function varargout = generateCostMatrices_DS_choice(strategiesP,strategiesE,Jfall,distrelWhenArrive,numMC,answerFlag)
 %inputs:
 %     strategiesP (pursuer) is a struct containing
 %         'matrices': nu x nx x T x nmodP  feedback matrices
@@ -12,13 +12,8 @@ function varargout = generateCostMatrices_DS(strategiesP,strategiesE,Jfall,xP0,x
 %         'types':  T x nmodP vector of 0s,1s.  0 denotes top path, 1
 %             denotes bottom path
 %     strategiesE is the same for all evader strategies
-%     xhat0 is the ehat of the player computing J matrices
-%     noiseTypeFlag refers to how the cost due to noise is to be
-%         calculated.
-%             noiseTypeFlag=0 means ignore noise terms in J (sunk cost)
-%             noiseTypeFlag=1 means to calculate them
-%             This may also be done with an internal Monte Carlo but I prefer to be
-%             efficient with my code.
+%     distrelWhenArrive is the distance between players when they arrive at
+%             the bridge/slot
 %     answerFlag:  ==0 -> return mean payoff
 %                  ==1 -> return most-used play
 % outputs:
@@ -38,7 +33,7 @@ thetamax=pi/6;
 nmodP=length(strategiesP.horizon);
 nmodE=length(strategiesE.horizon);
 
-if nargin==6
+if nargin==5
     answerFlag=0;
 end
 
@@ -51,7 +46,7 @@ nU=nUGG; boxBotT=boxBotTGG; boxBotB=boxBotBGG; boxTopB=boxTopBGG;
 dest=destGG; Qdest=QdestGG;
 
 tWidth=boxBotT-boxTopB;
-bWidth=2*tWidth;
+bWidth=max(.05,2*tWidth);
 
 Jpur=zeros(nmodP,nmodE);
 Jeva=zeros(nmodP,nmodE);
@@ -69,8 +64,32 @@ for iiMC=1:numMC
     noisevecP=sqrt(Qpdyn)*randn(TT,1); noisevecE=sqrt(Qedyn)*randn(TT,1);
     
     for i=1:nmodP
+        typeP=strategiesP.types(:,i);
         for j=1:nmodE
-            xP=xP0; xE=xE0; Jpurloc=0; Jevaloc=0;
+            typeE=strategiesE.types(:,j);
+            
+            %initial slot width
+            if typeP==0
+                xTopP=boxBotT;
+                Cp=tWidth;
+            else
+                xTopP=boxBotB;
+                Cp=bWidth;
+            end
+            if typeE==0
+                xTopE=boxBotT;
+                Ce=tWidth;
+            else
+                xTopE=boxBotB;
+                Ce=bWidth;
+            end
+            
+            %initial pos
+            xP=[-distrelWhenArrive;xTopP-Cp/2]; %"rotate" pursuer so he is in a straight line behind eva
+            xE=[0;xTopE-Ce/2];
+            
+            %initial cost
+            Jpurloc=0; Jevaloc=0;
             
             TT=min(strategiesP.horizon(i),strategiesE.horizon(j)); %time check
             if TT ~= max(strategiesP.horizon(i),strategiesE.horizon(j)) %only compare strategies of equal length
@@ -78,8 +97,6 @@ for iiMC=1:numMC
                 Jeva(i,j)=9001;
             else
                 TT=max(TT,1); %ensure that TT>=1;
-                
-                type=strategiesP.types(:,i);
                 
                 for k=1:TT
                     %use terminal vs. stepping cost
@@ -91,20 +108,11 @@ for iiMC=1:numMC
                         QuseE=QstepEva;
                     end
                     
-                    if type==0
-                        xTop=boxBotT;
-                        C=tWidth;
-                    else
-                        xTop=boxBotB;
-                        C=bWidth;
-                    end
-                    
-                    
                     uconP=strategiesP.constant(:,:,:,i);
                     uconE=strategiesE.constant(:,:,:,j);
                     
-                    yP=xTop-C/2-xP(2);
-                    yE=xTop-C/2-xE(2);
+                    yP=xTopP-Cp/2-xP(2);
+                    yE=xTopE-Ce/2-xE(2);
                     
                     thetaP=controlAngle(yP,uconP,thetamax);
                     thetaE=controlAngle(yE,uconE,thetamax);
@@ -122,40 +130,48 @@ for iiMC=1:numMC
                     e=xP-xE;
                     
                     JfallLocP=0; JfallLocE=0;
-                    if type==0
+                    if typeP==0
                         if xP(2)>boxBotT
                             JfallLocP=Jfall;
                         elseif xP(2)<boxTopB
                             JfallLocP=Jfall;
                         end
+                    else
+                        if xP(2)>boxBotB
+                            JfallLocP=Jfall;
+                        end
+                    end
+                    
+                    if typeE==0
                         if xE(2)>boxBotT
                             JfallLocE=Jfall;
                         elseif xE(2)<boxTopB
                             JfallLocE=Jfall;
                         end
                     else
-                        if xP(2)>boxBotB
-                            JfallLocP=Jfall;
-                        end
-                        if xE(2)>boxBotE
+                        if xE(2)>boxBotB
                             JfallLocP=Jfall;
                         end
                     end
+                        
                     
                     %calculate costs
                     Jpurloc=Jpurloc + e'*QuseP*e + RPur*uconP^2 + JfallLocP;
                     Jevaloc=Jevaloc - e'*QuseE*e + REva*uconE^2 + JfallLocE;
                     if k==TT
-                        Jevaloc = Jevaloc + (xE-dest)'*Qdest*(xE-dest); %cost not payoff
+                        Jevaloc = Jevaloc + (xE-dest)'*Qdest*(xE-dest);
                     end
                     
                 end
                 
+%                 if iiMC==1 && ((i==1 && j==1) || (i==2&&j==2))
+%                     xerr=(xE-dest)
+%                     errC=(xE-dest)'*Qdest*(xE-dest)
+%                 end
+                
                 Jpur(i,j)=Jpur(i,j)+Jpurloc;
                 Jeva(i,j)=Jeva(i,j)+Jevaloc;
             end
-            
-            
         end
     end
     

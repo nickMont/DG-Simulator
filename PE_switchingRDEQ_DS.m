@@ -1,5 +1,7 @@
 clear;clc;
-%closes the loop for control switching by risk-dominance criterion
+
+%closes the loop for control switching by risk-dominance criterion for the
+%drunken spider pursuit (PE over a bridge)
 
 %NOTES
 % Swap so as to use MC to generate OPTIMAL play and non-MC to generate ACTUAL play
@@ -11,23 +13,21 @@ MCmax=1;
 nSim=ceil(tmax/dt); %simulation time within MC
 nSim=1;
 
-Jfall=9001;
+intMcNum=500; %length of internal MC for costmatrix generation
 
 global boxBotTGG boxBotBGG boxTopBGG destGG QdestGG;
-boxBotTGG=.1; boxTopBGG=-.1; boxBotBGG=-.5; destGG=[1;0]; QdestGG=10*eye(2);
+boxBotBGG=-.5; destGG=[1;0]; QdestGG=10*eye(2);
+
+Jfall=9001; %fall cost of internal MC
+boxBotTGG=.05; boxTopBGG=-.05;
+
 %--- boxBotT
 %
 %--- boxTopB
 %---
 %--- boxBotB
-typeConst=0; %0 for top path, 1 for bottom path
-Cbox=boxBotTGG-boxTopBGG;
-if typeConst==0
-    xTop=boxBotTGG;
-else
-    Cbox=2*Cbox;
-    xTop=boxBotBGG;
-end
+CboxT=boxBotTGG-boxTopBGG;
+CboxB=max(2*CboxT,0.05);
 
 flagDiminishHorizonNearNSim=1;  %if ==1, consider lookAheadTime
          %if TRemain>lookAheadTime, use TRemain if TRemain<lookAheadTime
@@ -50,8 +50,6 @@ nZ=2*nX;
 
 eStore=zeros(nX,nSim,MCmax);
 
-intMcNum=10; %length of MC inside of costmatrix generation
-
 for MCL=1:MCmax
     
     
@@ -68,8 +66,8 @@ for MCL=1:MCmax
     Hstack=eye(nZ); %each player measures each player's positions
     P0=.1*eyeNX;
     P0stack=[P0 zerosNX; zerosNX P0];
-    Q0p=.1; %process noise, pursuer
-    Q0e=.005;
+    Q0p=.01; %process noise, pursuer
+    Q0e=.1;
     Q0stack=[Q0p 0; 0 Q0e];
     R0P=.05*eye(nZ); %measurement noise
     R0E=R0P;
@@ -110,7 +108,7 @@ for MCL=1:MCmax
     
     if nX==2
         xEva=[0;0];
-        xPur=[-1;0];
+        xPur=[-0.5;0];
     else
         xEva=[5.000;3;0;0];
         xPur=[0;0;0;.1];
@@ -222,22 +220,44 @@ for MCL=1:MCmax
                 ttf=lookAheadTime;
             end
             
-            u1p=.05:.05:.25; %.177
-            u1e=.05:.05:.25; %.097
+            u1p=.05:.025:.15;
+            u1e=.05:.025:.15;
+%             
+%             u1p=[.1 .1]; u1e=[.1 .1];
+%             u1p=.1; u1e=.1;
             
-            uconP=uConMat(ttf,umaxPur,u1p);
-            uconE=uConMat(ttf,umaxEva,u1e);
+            uconPtemp=uConMat(ttf,umaxPur,u1p);
+            uconEtemp=uConMat(ttf,umaxEva,u1e);
+        end
+        nmod_pur=length(uconPtemp);
+        nmod_eva=length(uconEtemp);
+        %i=1 -> decision between top and bottom
+        if i==1
+            if nmod_pur>1 %split to fix issue with matlab forcing 4d vectors into 2d
+                sz0=size(uconPtemp); sz=sz0; sz(4)=2*sz0(4);
+                uconP=zeros(sz); uconP(:,:,:,1:sz0(4))=uconPtemp; uconP(:,:,:,sz0(4)+1:end)=uconPtemp;
+                typesP=[0*ones(ttf,nmod_pur) 1*ones(ttf,nmod_pur)];
+            else
+                uconP=u1p*ones(1,1,1,2); typesP=[0 1];
+            end
+            if nmod_eva>1
+                sz0=size(uconEtemp); sz=sz0; sz(4)=2*sz0(4);
+                uconE=zeros(sz); uconE(:,:,:,1:sz0(4))=uconEtemp; uconE(:,:,:,sz0(4)+1:end)=uconEtemp;
+                typesE=[0*ones(ttf,nmod_eva) 1*ones(ttf,nmod_eva)];
+            else
+                uconE=u1e*ones(1,1,1,2); typesE=[0 1];
+            end
+            nmod_pur=2*nmod_pur; nmod_eva=2*nmod_eva;
+        else
+            uconE=uconEtemp; uconP=uconPtemp;
+            typesE=typeChosenE*ones(ttf,nmod_eva); typesP=typeChosenP*ones(ttf,nmod_pur);
         end
         
         
-        nmod_pur=length(uconP);
-        nmod_eva=length(uconE);
         hP=ttf*ones(nmod_pur,1); %horizon length for pursuer, must define AFTER nmod calculation
         hE=ttf*ones(nmod_eva,1);
         KmatP=[];
         KmatE=[];
-        typesE=typeConst*ones(ttf,nmod_eva);
-        typesP=typeConst*ones(ttf,nmod_pur);
         
         uclassVecPpur=zeros(nmod_pur,1); uclassVecEpur=zeros(nmod_eva,1);
         uclassVecPeva=zeros(nmod_pur,1); uclassVecEeva=zeros(nmod_eva,1);
@@ -261,9 +281,15 @@ for MCL=1:MCmax
         strategiesP=struct('matrices',KmatP,'constant',uconP,'horizon',hP,'types',typesP);
         %KmatE, KmatP are nu x nx x T x nmodE/nmodP feedback matrices,
         %where T is the maximum time horizon considered
-        [JpPur,JePur]=generateCostMatrices_DS(strategiesP,strategiesE,Jfall,xPpur,xEpur,intMcNum);
-        [JpEva,JeEva]=generateCostMatrices_DS(strategiesP,strategiesE,Jfall,xPeva,xEeva,intMcNum);
-        
+        if i==1
+            [JpPur,JePur]=generateCostMatrices_DS_choice(strategiesP,strategiesE,Jfall,norm(xPpur-xEpur),intMcNum);
+            [JpEva,JeEva]=generateCostMatrices_DS_choice(strategiesP,strategiesE,Jfall,norm(xPeva-xEeva),intMcNum);
+            [playedPpur,playedEpur]=generateCostMatrices_DS_choice(strategiesP,strategiesE,Jfall,norm(xPpur-xEpur),intMcNum,1);
+            [playedPeva,playedEeva]=generateCostMatrices_DS_choice(strategiesP,strategiesE,Jfall,norm(xPeva-xEeva),intMcNum,1);
+        else
+            [JpPur,JePur]=generateCostMatrices_DS(strategiesP,strategiesE,Jfall,xPpur,xEpur,intMcNum);
+            [JpEva,JeEva]=generateCostMatrices_DS(strategiesP,strategiesE,Jfall,xPeva,xEeva,intMcNum);
+        end
         %convert cost matrices to payoff matrices
         VpPur=Coff-JpPur;
         VePur=Coff-JePur;
@@ -271,6 +297,43 @@ for MCL=1:MCmax
         VeEva=Coff-JeEva;
         [eqLocP,nashReturnFlagP,~]=findRDEq(VpPur,VePur);
         [eqLocE,nashReturnFlagE,~]=findRDEq(VpEva,VeEva);
+        %FIX MIXED RETURN CASE
+        if i==1 %turn chosen path into path constants
+            if nashReturnFlagP>0
+                typeChosenP=typesP(eqLocP(1)); typeChosenGuessE=typesE(eqLocP(2));
+            else
+                nashMixed=LH2(VpPur,VePur); eqvP=nashMixed{1}; eqvE=nashMixed{2};
+                [~,maxi]=max(eqvP); typeChosenP=typesP(maxi); [~,maxi]=max(eqvE); typeChosenGuessE=typesE(maxi);
+            end
+            if nashReturnFlagE>0
+                typeChosenE=typesE(eqLocE(2)); typeChosenGuessP=typesP(eqLocE(1));
+            else
+                nashMixed=LH2(VpEva,VeEva); eqvP=nashMixed{1}; eqvE=nashMixed{2};
+                [~,maxi]=max(eqvP); typeChosenGuessP=typesP(maxi); [~,maxi]=max(eqvE); typeChosenE=typesE(maxi);
+            end
+
+            if typeChosenP==0
+                xTopP=boxBotTGG; CboxP=CboxT;
+            else
+                xTopP=boxBotBGG; CboxP=CboxB;
+            end
+            if typeChosenE==0
+                xTopE=boxBotTGG; CboxE=CboxT;
+            else
+                xTopE=boxBotBGG; CboxE=CboxB;
+            end
+            if typeChosenGuessP==0
+                xTopGP=boxBotTGG; CboxGP=CboxT;
+            else
+                xTopGP=boxBotBGG; CboxGP=CboxB;
+            end
+            if typeChosenE==0
+                xTopGE=boxBotTGG; CboxGE=CboxT;
+            else
+                xTopGE=boxBotBGG; CboxGE=CboxB;
+            end
+            
+        end
         
         %Process equilibria into controls
         if nashReturnFlagP>=1 %if there IS an RDEq
@@ -289,15 +352,16 @@ for MCL=1:MCmax
             [uPurExpectedTemp,uEvaTrueTemp] = processNashType0(VpEva,VeEva,umaxPur,umaxEva,uconP,uconE);
         end
         
-        yP=xTop-Cbox/2-xPpur(2);
-        yE=xTop-Cbox/2-xEpur(2);
+        yP=xTopP-CboxE/2-xPpur(2);
+        yE=xTopGE-CboxGE/2-xEpur(2);
         thetaPpur=real(controlAngle(yP,uPurTrueTemp,pi/6));
         thetadum=real(controlAngle(yE,uEvaExpectedTemp,pi/6));
         uPurTrue=uPurTrueTemp*[cos(thetaPpur);sin(thetaPpur)];
         uEvaExpected=uEvaExpectedTemp*[cos(thetadum);sin(thetadum)];
         
-        yP=xTop-Cbox/2-xPeva(2);
-        yE=xTop-Cbox/2-xEeva(2);
+        
+        yP=xTopGP-CboxGP/2-xPeva(2);
+        yE=xTopE-CboxE/2-xEeva(2);
         thetadum=real(controlAngle(yP,uPurExpectedTemp,pi/6));
         thetaEeva=real(controlAngle(yE,uEvaTrueTemp,pi/6));
         uPurExpected=uPurExpectedTemp*[cos(thetadum);sin(thetadum)];
@@ -401,111 +465,111 @@ end
 %     axis([0 tkhist(finalEndPlot) 0 1.1])
 %     legend('r1','r2')
 % end
-if flagPlotFinal==1
-    mState=mean(eStore,3);
-    figure(2)
-    subplot(2,1,1)
-    plot(1:1:nSim,mState(1,:));
-    title('Monte Carlo simulation')
-    xlabel('Time step')
-    ylabel('Distance')
-    subplot(2,1,2)
-    plot(1:1:nSim,mState(2,:));
-    xlabel('Time step')
-    ylabel('Relative speed')
-end
+% if flagPlotFinal==1
+%     mState=mean(eStore,3);
+%     figure(2)
+%     subplot(2,1,1)
+%     plot(1:1:nSim,mState(1,:));
+%     title('Monte Carlo simulation')
+%     xlabel('Time step')
+%     ylabel('Distance')
+%     subplot(2,1,2)
+%     plot(1:1:nSim,mState(2,:));
+%     xlabel('Time step')
+%     ylabel('Relative speed')
+% end
+% 
+% 
+% figure(3);clf
+% subplot(2,1,1)
+% plot(dt*(1:1:numSimRuns),eStore(1,1:numSimRuns),'r')
+% hold on
+% plot(dt*(1:1:numSimRuns),eStore(2,1:numSimRuns),'b')
+% hLeg = legend('$\|e\|$','$\|\dot{e}\|$');
+% set(hLeg,'Interpreter','latex');
+% set(hLeg,'Interpreter','latex');
+% title('Relative pos and velocity')
+% subplot(2,1,2)
+% stairs(dt*(1:1:numSimRuns),uphist,'r')
+% hold on
+% stairs(dt*(1:1:numSimRuns),upDethist,'k')
+% hold on
+% stairs(dt*(1:1:numSimRuns),uehist,'b')
+% hold on
+% stairs(dt*(1:1:numSimRuns),ueDethist,'g')
+% hLeg = legend('$\|u_p\|$','$\|u_p\|_{opt}$','$\|u_e\|$','$\|u_e\|_{opt}$');
+% set(hLeg,'Interpreter','latex');
+% set(hLeg,'Interpreter','latex');
+% title('Applied control and optimal control')
 
 
-figure(3);clf
-subplot(2,1,1)
-plot(dt*(1:1:numSimRuns),eStore(1,1:numSimRuns),'r')
-hold on
-plot(dt*(1:1:numSimRuns),eStore(2,1:numSimRuns),'b')
-hLeg = legend('$\|e\|$','$\|\dot{e}\|$');
-set(hLeg,'Interpreter','latex');
-set(hLeg,'Interpreter','latex');
-title('Relative pos and velocity')
-subplot(2,1,2)
-stairs(dt*(1:1:numSimRuns),uphist,'r')
-hold on
-stairs(dt*(1:1:numSimRuns),upDethist,'k')
-hold on
-stairs(dt*(1:1:numSimRuns),uehist,'b')
-hold on
-stairs(dt*(1:1:numSimRuns),ueDethist,'g')
-hLeg = legend('$\|u_p\|$','$\|u_p\|_{opt}$','$\|u_e\|$','$\|u_e\|_{opt}$');
-set(hLeg,'Interpreter','latex');
-set(hLeg,'Interpreter','latex');
-title('Applied control and optimal control')
-
-
-% CODE GRAVEYARD
-% generating/concatenating feedback controls
-for indentFeedback=1:1
-    if flagUseFeedback==1
-        %generate greedy feedback matrices for matrix case
-        ttf=ceil(tmax/dt - i);
-        k1p = .05:.1:.25;
-        k2p = [0 .1];
-        possibleCombAtOneTimeStep=combvec(k1p,k2p);
-        possibleCombosPrev=possibleCombAtOneTimeStep;
-        for i0=1:ttf
-            possibleCombosPrev=combvec(possibleCombosPrev, possibleCombAtOneTimeStep);
-        end
-        nnp=length(possibleCombosPrev);
-        KpmatList=zeros(nU,nX,ttf,nnp);
-        for i1=1:nnp
-            for i2=1:ttf
-                %grab the i2'th block of possibleCombosPrev
-                if nX==2
-                    nblock=nU*(i2-1);
-                    KpmatList(:,:,i2,i1)=[possibleCombosPrev(nblock+1,i1)...
-                        possibleCombosPrev(nblock+2,i1)];
-                elseif nX==4
-                    nblock=nU*(i2-1);
-                    k1Ind=possibleCombosPrev(nblock+1,i1);
-                    k2Ind=possibleCombosPrev(nblock+2,i1);
-                    KpmatList(:,:,i2,i1)=[k1Ind 0 k2Ind 0; 0 k1Ind 0 k2Ind];
-                end
-            end
-        end
-        k1e=k1p;
-        k2e=k2p;
-        possibleCombAtOneTimeStep=combvec(k1e,k2e);
-        possibleCombosPrev=possibleCombAtOneTimeStep;
-        for i0=1:ttf
-            possibleCombosPrev=combvec(possibleCombosPrev,possibleCombAtOneTimeStep);
-        end
-        nne=length(possibleCombosPrev);
-        KematList=zeros(nU,nX,ttf,nne);
-        for i1=1:nne
-            for i2=1:ttf
-                %grab the i2'th block of possibleCombosPrev
-                if nX==2
-                    nblock=nU*(i2-1);
-                    KematList(:,:,i2,i1)=[possibleCombosPrev(nblock+1,i1)...
-                        possibleCombosPrev(nblock+2,i1)];
-                elseif nX==4
-                    nblock=nU*(i2-1);
-                    k1Ind=possibleCombosPrev(nblock+1,i1);
-                    k2Ind=possibleCombosPrev(nblock+2,i1);
-                    KematList(:,:,i2,i1)=[k1Ind 0 k2Ind 0; 0 k1Ind 0 k2Ind];
-                end
-            end
-        end
-        sizeKmat=size(KpmatList);
-        nmod_pur=nnp;
-        nmod_eva=nne;
-        hP=ttf*ones(nmod_pur,1); %horizon length for pursuer, must define AFTER nmod calculation
-        hE=ttf*ones(nmod_eva,1);
-        KmatP=KpmatList;
-        KmatE=KematList;
-        typesE=zeros(ttf,nmod_eva);
-        typesP=zeros(ttf,nmod_pur);
-        uconE=[]; %negation is handled in cost generation code
-        uconP=[];
-    end
-end
+% % CODE GRAVEYARD
+% % generating/concatenating feedback controls
+% for indentFeedback=1:1
+%     if flagUseFeedback==1
+%         %generate greedy feedback matrices for matrix case
+%         ttf=ceil(tmax/dt - i);
+%         k1p = .05:.1:.25;
+%         k2p = [0 .1];
+%         possibleCombAtOneTimeStep=combvec(k1p,k2p);
+%         possibleCombosPrev=possibleCombAtOneTimeStep;
+%         for i0=1:ttf
+%             possibleCombosPrev=combvec(possibleCombosPrev, possibleCombAtOneTimeStep);
+%         end
+%         nnp=length(possibleCombosPrev);
+%         KpmatList=zeros(nU,nX,ttf,nnp);
+%         for i1=1:nnp
+%             for i2=1:ttf
+%                 %grab the i2'th block of possibleCombosPrev
+%                 if nX==2
+%                     nblock=nU*(i2-1);
+%                     KpmatList(:,:,i2,i1)=[possibleCombosPrev(nblock+1,i1)...
+%                         possibleCombosPrev(nblock+2,i1)];
+%                 elseif nX==4
+%                     nblock=nU*(i2-1);
+%                     k1Ind=possibleCombosPrev(nblock+1,i1);
+%                     k2Ind=possibleCombosPrev(nblock+2,i1);
+%                     KpmatList(:,:,i2,i1)=[k1Ind 0 k2Ind 0; 0 k1Ind 0 k2Ind];
+%                 end
+%             end
+%         end
+%         k1e=k1p;
+%         k2e=k2p;
+%         possibleCombAtOneTimeStep=combvec(k1e,k2e);
+%         possibleCombosPrev=possibleCombAtOneTimeStep;
+%         for i0=1:ttf
+%             possibleCombosPrev=combvec(possibleCombosPrev,possibleCombAtOneTimeStep);
+%         end
+%         nne=length(possibleCombosPrev);
+%         KematList=zeros(nU,nX,ttf,nne);
+%         for i1=1:nne
+%             for i2=1:ttf
+%                 %grab the i2'th block of possibleCombosPrev
+%                 if nX==2
+%                     nblock=nU*(i2-1);
+%                     KematList(:,:,i2,i1)=[possibleCombosPrev(nblock+1,i1)...
+%                         possibleCombosPrev(nblock+2,i1)];
+%                 elseif nX==4
+%                     nblock=nU*(i2-1);
+%                     k1Ind=possibleCombosPrev(nblock+1,i1);
+%                     k2Ind=possibleCombosPrev(nblock+2,i1);
+%                     KematList(:,:,i2,i1)=[k1Ind 0 k2Ind 0; 0 k1Ind 0 k2Ind];
+%                 end
+%             end
+%         end
+%         sizeKmat=size(KpmatList);
+%         nmod_pur=nnp;
+%         nmod_eva=nne;
+%         hP=ttf*ones(nmod_pur,1); %horizon length for pursuer, must define AFTER nmod calculation
+%         hE=ttf*ones(nmod_eva,1);
+%         KmatP=KpmatList;
+%         KmatE=KematList;
+%         typesE=zeros(ttf,nmod_eva);
+%         typesP=zeros(ttf,nmod_pur);
+%         uconE=[]; %negation is handled in cost generation code
+%         uconP=[];
+%     end
+% end
 
 
 
